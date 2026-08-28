@@ -74,3 +74,40 @@ same interface):
 DeepSeek if resume-writing quality is insufficient. Treat Claude as the
 eventual production upgrade, swapped in via the same interface with no
 changes to agent logic.
+
+**Revision**: this `llm.complete()` interface applies to Phases 1-2 only
+(pure text generation: JD classification, resume tailoring). Phase 4c
+(autofill/apply) does not go through it — see below.
+
+## Autofill/Apply Agent (PLAN.md Phase 4c)
+
+**Decision**: drive the browser via the Claude Code CLI in headless/print
+mode (`claude -p ... --output-format json`), spawned as a subprocess per
+job, with a Playwright MCP server configured for the invocation. Not the
+Anthropic API — the CLI authenticates against the user's Claude Code Pro
+subscription, so this consumes Pro-plan usage rather than metered API
+billing (no developer/API credits available).
+
+Rationale: this is the one stage that needs an actual agent reasoning about
+a live page (field detection by label, matching to the demographic JSON,
+answering job-specific questions) rather than fixed selectors per ATS —
+letting an LLM drive the browser directly avoids hand-writing and
+maintaining brittle per-ATS DOM automation. Confirmed available on this
+machine: `claude` CLI (v2.1.251), `node` (v24.15.0), `npx`.
+
+The subprocess is required to return output shaped into the existing
+`FieldMap` contract (`field_id`, `label`, `value`, `source`, `confidence`)
+via `--output-format json` — nothing downstream (confidence-based escalation,
+`run_summary.json`) changes because of this.
+
+**Caveats to build around**:
+- Pro-plan usage (5-hour rolling window + weekly cap) is shared with all
+  other Claude Code usage on the account, including normal development —
+  worth watching if application volume scales up.
+- Playwright MCP has no built-in dry-run/no-submit mode; the Phase 4c
+  dry-run boundary ("fill fields, stop before submit") is enforced purely by
+  prompt instruction, which is weaker than a hard-coded stop. Needs
+  verification before trusting it unsupervised.
+- Confidence-per-field does not come for free — the prompt must explicitly
+  require the agent to self-report a confidence score per answer, or the
+  escalation trigger has nothing to read.

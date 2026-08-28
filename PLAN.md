@@ -4,7 +4,7 @@ Refined build order for the harness. Each phase depends only on the phase
 before it, and produces an artifact that can be inspected without the next
 phase existing yet.
 
-## Phase 0 — Architecture & data contracts
+## Phase 0 — Architecture & data contracts ✅ Complete
 Decide the framework (simple function chain vs. something like LangGraph) and
 lock the JSON schemas that pass between agents: `job_context.json` (JD +
 metadata), tailored resume output, `field_map.json` (portal field -> answer),
@@ -13,6 +13,11 @@ metadata), tailored resume output, `field_map.json` (portal field -> answer),
 **Test**: write one hand-crafted example of each JSON file and confirm they
 contain everything the next agent will need — no code yet, just schema
 review.
+
+**Delivered**: framework decision (LangGraph) recorded in
+TECH_REQUIREMENT.md; all four contracts defined as pydantic models in
+`src/jobapply/schemas.py`; hand-crafted examples in `docs/examples/`, each
+validated against its model.
 
 ## Phase 1 — JD-fetch agent
 Moved ahead of resume customization since it's resume customization's input.
@@ -35,15 +40,20 @@ correctly. This phase never needs a browser — testable purely on files.
 Pick a free/open-source LLM, but wrap it behind one interface
 (`llm.complete(prompt) -> str`) so Phases 1-2 never call the vendor SDK
 directly. Can be built in parallel with Phase 1/2 — not blocking, just needs
-to exist before a vendor call gets hardwired somewhere.
+to exist before a vendor call gets hardwired somewhere. Applies to Phases
+1-2 only (pure text generation) — Phase 4c does not go through this
+interface; see below.
 
 **Test**: same prompt through the chosen free model and through Claude,
 confirm identical call signature and both return usable text.
 
 ## Phase 4 — Autofill research
-4a: survey open-source Playwright job-autofill repos.
-4b: instrument/inspect the Simplify extension (DOM + network) to learn its
-field-detection heuristics and where it fails.
+4a: survey open-source Playwright job-autofill repos (see ApplyPilot,
+AIHawk, job-seek — TECH_REQUIREMENT.md). 4b: instrument/inspect the Simplify
+extension (DOM + network) to learn its field-detection heuristics and where
+it fails. Now scoped as informing what context/known quirks to feed the
+agent in 4c (e.g. Workday tenant patterns), not as a spec for hand-written
+DOM selectors — see the Phase 4c approach change below.
 
 **Test**: a short written findings doc with a concrete list of
 field-detection heuristics and known failure cases — testable as "does this
@@ -51,12 +61,30 @@ doc let someone else start Phase 4c without re-researching," not just a
 summary.
 
 ## Phase 4c — Autofill agent, single ATS first
-Pick one ATS (Workday or Greenhouse) and build field-mapping: static fields
-from the demographic JSON, job-specific fields via semantic search + reframe.
-Run in **dry-run mode** — fill fields, stop before final submit.
+Revised approach (see TECH_REQUIREMENT.md: Autofill/Apply Agent): instead of
+hand-written Playwright selectors per ATS, drive the browser via the Claude
+Code CLI in headless mode (`claude -p ... --output-format json`), spawned as
+a subprocess per job with a Playwright MCP server attached — using Claude
+Code Pro-plan usage, not API billing. The subprocess is given `JobContext` +
+`TailoredResume` + the demographic JSON + the job-specific answer bank, and
+must return output shaped into the `FieldMap` contract (`field_id`, `label`,
+`value`, `source`, `confidence`) so escalation (Phase 6) and everything
+downstream is unaffected by this implementation change.
 
-**Test**: run against 2-3 real postings on that ATS, manually verify every
-filled field, confirm it stops before submit every time.
+Pick one ATS (Workday or Greenhouse) first. Run in **dry-run mode** — fill
+fields, stop before final submit. Note: Playwright MCP has no built-in
+dry-run lock, so this boundary is enforced purely by prompt instruction and
+must be verified, not assumed.
+
+**Test, step 1 (isolated)**: before wiring into the graph, run one raw
+`claude -p` + Playwright MCP invocation by hand against a real posting on
+the chosen ATS. Confirm: (a) it returns clean JSON matching the `FieldMap`
+shape, (b) it self-reports a confidence per field, (c) it stops before
+clicking submit.
+
+**Test, step 2 (wired in)**: run against 2-3 real postings on that ATS as a
+graph node, manually verify every filled field, confirm it stops before
+submit every time.
 
 ## Phase 5 — Chain the agents
 Wire JD-fetch -> resume-customize -> autofill with per-job state written to
