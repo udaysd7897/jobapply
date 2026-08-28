@@ -1,0 +1,18 @@
+{
+  "run_id": "2026-08-29T09-00-00",
+  "started_at": "2026-08-29T09:00:00Z",
+  "finished_at": "2026-08-29T09:42:11Z",
+  "total_jobs": 5,
+  "counts": {
+    "applied": 3,
+    "escalated": 1,
+    "errored": 1
+  },
+  "jobs": [
+    { "job_id": "acme-ai-ai-engineer", "company": "Acme AI", "title": "AI Engineer", "status": "applied" },
+    { "job_id": "globex-ml-ml-engineer", "company": "Globex", "title": "Machine Learning Engineer", "status": "applied" },
+    { "job_id": "initech-ai-engineer", "company": "Initech", "title": "AI Engineer", "status": "applied" },
+    { "job_id": "umbrella-ai-engineer", "company": "Umbrella Corp", "title": "AI Engineer", "status": "escalated", "reason": "low_confidence_answer: question_relocation" },
+    { "job_id": "hooli-ml-engineer", "company": "Hooli", "title": "ML Engineer", "status": "errored", "reason": "job_url returned 404" }
+  ]
+}

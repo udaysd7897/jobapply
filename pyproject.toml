@@ -1,0 +1,22 @@
+[project]
+name = "jobapply"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "udaysd7897", email = "udaysd7897@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "langgraph>=1.2.11",
+    "openai>=3.5.0",
+    "playwright>=1.62.0",
+    "pydantic>=2.13.5",
+    "python-dotenv>=1.2.3",
+]
+
+[project.scripts]
+jobapply-fetch-jd = "jobapply.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"

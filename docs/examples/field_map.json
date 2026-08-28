@@ -1,0 +1,34 @@
+{
+  "job_id": "acme-ai-ai-engineer",
+  "portal": "greenhouse",
+  "fields": [
+    {
+      "field_id": "first_name",
+      "label": "First Name",
+      "value": "Uday",
+      "source": "static",
+      "confidence": 1.0
+    },
+    {
+      "field_id": "work_authorization",
+      "label": "Are you legally authorized to work in the US?",
+      "value": "Yes",
+      "source": "static",
+      "confidence": 1.0
+    },
+    {
+      "field_id": "question_llm_experience",
+      "label": "Tell me about your experience with LLMs",
+      "value": "Built and evaluated LLM-based agent pipelines, including prompt evaluation harnesses and retrieval-augmented workflows...",
+      "source": "semantic_search",
+      "confidence": 0.82
+    },
+    {
+      "field_id": "question_relocation",
+      "label": "Are you willing to relocate for this role?",
+      "value": null,
+      "source": "semantic_search",
+      "confidence": 0.31
+    }
+  ]
+}
