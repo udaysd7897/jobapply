@@ -2,6 +2,7 @@
   "personal": {
     "full_name": "Jane Doe",
     "preferred_name": "Jane",
+    "date_of_birth": "1990-01-01",
     "email": "jane.doe@example.com",
     "password": "used only for creating per-employer portal accounts during apply",
     "phone": "+1 555 123 4567",
@@ -21,11 +22,12 @@
     "work_permit_type": ""
   },
   "compensation": {
-    "salary_currency": "USD",
-    "salary_expectation": "150000",
-    "salary_range_min": "150000",
-    "salary_range_max": "180000",
-    "currency_conversion_note": ""
+    "currency": "USD",
+    "current_ctc": 150000,
+    "current_base": 130000,
+    "current_esops": 10000,
+    "current_variable": 10000,
+    "expected_ctc": 180000
   },
   "experience": {
     "years_of_experience_total": "5",
@@ -33,16 +35,12 @@
     "target_role": "AI Engineer"
   },
   "availability": {
-    "earliest_start_date": "Immediately"
+    "notice_period_days": 30
   },
   "eeo_voluntary": {
     "gender": "Decline to self-identify",
     "race_ethnicity": "Decline to self-identify",
     "veteran_status": "I am not a protected veteran",
     "disability_status": "I do not wish to answer"
-  },
-  "location_preferences": {
-    "primary": "San Francisco",
-    "accept_patterns": ["San Francisco", "Remote"]
   }
 }

@@ -74,10 +74,12 @@ confidence map (REQUIREMENT.md Resolved Product Decisions #4-5). `captcha`,
 `login_issue`, and `failed` escalate to Phase 6; `applied`/`expired` don't.
 
 The prompt itself is adapted from ApplyPilot's `prompt.py` (copied in,
-remapped to our contracts). Its CAPTCHA-solving section is kept as-is for
-now (not stripped to an immediate-escalate version) — a known, deliberate
-deviation from this phase's original "escalate on CAPTCHA" framing, to
-revisit after the first dry run.
+remapped to our contracts). Its CAPTCHA-solving section was kept as-is
+initially, then revisited after the first dry run per plan: live testing
+found it structurally blind to standard reCAPTCHA and, with no CapSolver
+key configured, always falling to a self-solving fallback — the opposite
+of Phase 8's intent below. Replaced with a simple bounded-retry policy
+(try twice, then escalate) — see TECH_REQUIREMENT.md and ISSUE.md.
 
 Pick one ATS (Workday or Greenhouse) first. Run in **dry-run mode** — fill
 fields, stop before final submit. Note: Playwright MCP has no built-in

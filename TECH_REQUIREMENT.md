@@ -121,14 +121,24 @@ output instead of a dashboard.
 
 **Decisions on two things the copied prompt does that don't match earlier
 plans, resolved explicitly rather than silently inherited**:
-- **CAPTCHA**: the copied prompt includes ApplyPilot's full CAPTCHA-solving
-  section (CapSolver API + a manual fallback where the agent itself solves
-  puzzle/audio challenges) — the opposite of PLAN.md Phase 8's original
-  "escalate to human, don't auto-solve" decision. Kept as-is for now per
-  explicit instruction, to be revisited later; no `CAPSOLVER_API_KEY` is
-  configured, so it currently runs the manual-fallback path (attempts the
-  puzzle/audio solve itself) before giving up with `RESULT:CAPTCHA`, rather
-  than escalating immediately on detection.
+- **CAPTCHA — revised (2026-08-30)**: the copied ApplyPilot CAPTCHA section
+  (CapSolver API + a manual fallback where the agent tries to solve
+  puzzle/audio challenges itself) is now **disabled** — commented out in
+  `prompt.py`, not deleted, in case any of it is worth reviving later.
+  Live testing surfaced two problems with it: (1) its JS `browser_evaluate`
+  detection script is structurally blind to standard reCAPTCHA, since
+  `document.querySelector` can't see into the cross-origin iframe it
+  renders in (Playwright's own `browser_snapshot` sees it fine — the
+  prompt just never told the agent to check there); (2) with no
+  `CAPSOLVER_API_KEY` configured, it always fell to the manual-fallback
+  path, which is exactly the ToS-risk/self-solving behavior PLAN.md Phase
+  8 originally wanted to avoid. Replaced with a much simpler policy: try
+  to interact with any detected verification widget at most twice: if
+  still unresolved, output `RESULT:CAPTCHA` and stop. No detection script,
+  no external solving API, no puzzle-solving — this restores Phase 8's
+  original "escalate, don't auto-solve" intent while still giving the
+  agent one or two reasonable attempts at simple cases (e.g. a
+  low-risk-scored reCAPTCHA checkbox that passes without a challenge).
 - **Per-answer confidence**: dropped. The copied prompt has the agent answer
   screening questions directly and confidently, with no self-reported
   confidence per answer — matches REQUIREMENT.md Resolved Product Decisions
