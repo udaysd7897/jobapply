@@ -96,10 +96,13 @@ before clicking submit, (c) OTP retrieval via Gmail MCP works if an account
 signup flow triggers one.
 
 Status: run several times against real postings (DXC/Workday, SuccessFactors,
-ApplyToJob, BambooHR) — see TECH_REQUIREMENT.md for what each returned.
-(a) confirmed every time. (b) confirmed on one logged run; not yet confirmed
-reliable across repeated runs. (c) not yet exercised — no tested posting has
-triggered an account-signup/OTP flow.
+ApplyToJob, BambooHR, Cognizant, Capital One/Workday) — see
+TECH_REQUIREMENT.md for what each returned. (a) confirmed every time.
+(b) confirmed on two logged runs, including one that reached the actual
+final Review page (Capital One) rather than stopping earlier; not yet
+confirmed reliable across every run. (c) confirmed working — the Capital
+One run created a Workday account, retrieved the verification email via
+`gmail:read_email`, and completed activation via the link inside it.
 
 **Test, step 2 (wired in)**: run against 2-3 real postings on that ATS as a
 graph node, manually verify the result and any filled fields, confirm it

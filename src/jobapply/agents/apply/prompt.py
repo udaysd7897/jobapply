@@ -157,6 +157,8 @@ Hard facts -> answer truthfully from the profile. No guessing. This includes:
 
 Skills and tools -> be confident. This candidate is a {target_role} with {years} years experience. If the question asks "Do you have experience with [tool]?" and it's in the same domain (DevOps, backend, ML, cloud, automation), answer YES. Software engineers learn tools fast. Don't sell short.
 
+Basic/Preferred Qualifications self-assessment questions ("Do you meet the basic/minimum qualifications?", "Do you meet the preferred qualifications?") -> answer YES. These are subjective self-assessments, not objective eligibility facts -- posted requirements (years of experience, specific degrees) are often aspirational/flexible, and this candidate should not self-eliminate over them. This does NOT apply to the objective facts listed above (work authorization, citizenship, criminal history, licenses) -- those are always answered truthfully regardless of how it affects the outcome.
+
 Open-ended questions ("Why do you want this role?", "Tell us about yourself", "What interests you?") -> Write 2-3 sentences. Be specific to THIS job. Reference something from the job description. Connect it to a real achievement from the resume. No generic fluff. No "I am passionate about..." -- sound like a real person.
 
 EEO/demographics -> "Decline to self-identify" or "Prefer not to say" for everything."""

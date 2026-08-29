@@ -225,6 +225,30 @@ returning persistent HTTP 500s, unrelated to this code; two other-ATS
 postings (SuccessFactors, ApplyToJob) each returned a clean `applied`
 `ApplyResult`; a BambooHR posting was run twice with full session
 logging, and the second run correctly stopped before clicking Submit per
-the dry-run instruction (logged verbatim: "this is a dry run"). Gmail OTP
-retrieval has not been exercised yet — none of the postings tested so far
-triggered an account-signup/email-verification flow.
+the dry-run instruction (logged verbatim: "this is a dry run"); a
+Cognizant posting correctly returned `login_issue` after the site's
+email-sign-in-link never arrived (~9 minutes of patient retries via
+`gmail:search_emails`, then gave up rather than trying the disallowed SSO
+option); a Capital One/Workday posting completed a full account
+creation + email verification (`gmail:read_email` found the activation
+link, `browser_navigate` completed it) + multi-page form fill, corrected
+resume-parser field misalignment by re-reading the actual PDF, and
+correctly stopped at the real final Review page rather than an earlier
+step. Gmail OTP/verification retrieval is confirmed working end-to-end.
+
+**Gotcha found via the Cognizant/Capital One runs: the spawned session was
+reading this repo's own `CLAUDE.md`.** Claude Code auto-discovers `CLAUDE.md`
+by walking up from the subprocess's working directory. Since `apply_job()`
+didn't set `cwd` explicitly, the spawned session inherited this repo as its
+cwd, loaded this very file as project context, read its own warning about
+"the apply agent" being a risky live action, and refused to proceed —
+quoting `CLAUDE.md` back and recommending the user run it from their own
+terminal (which is exactly what was already happening). Fixed by spawning
+the subprocess with `cwd` set to a fresh `tempfile.mkdtemp()` directory
+outside the repo — none of the paths passed to it (mcp-config, resume PDF,
+prompt text) are cwd-relative, so this has no functional side effect.
+`--bare` was considered and rejected: it also disables OAuth/keychain auth,
+which would break the whole point of this design (Pro-plan login, not API
+billing). `--safe-mode` disables `CLAUDE.md` too but its docs are ambiguous
+about whether it also disables explicitly-passed `--mcp-config` servers —
+not worth the risk of silently losing Playwright/Gmail tools to find out.

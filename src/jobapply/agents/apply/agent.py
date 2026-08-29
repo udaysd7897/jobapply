@@ -2,6 +2,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 
@@ -130,6 +131,14 @@ def apply_job(job_context: JobContext, tailored_resume: TailoredResume, dry_run:
     for key in ("ANTHROPIC_API_KEY", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
         env.pop(key, None)
 
+    # cwd must be outside this repo: Claude Code auto-discovers CLAUDE.md by
+    # walking up from cwd, and this repo's CLAUDE.md describes the apply
+    # agent itself as a risky live action -- a spawned session that inherits
+    # the repo as its cwd reads that warning about itself and refuses to
+    # proceed (confirmed live: it quoted CLAUDE.md back and declined). None
+    # of the paths passed in (mcp config, resume, prompt) are cwd-relative.
+    spawn_cwd = tempfile.mkdtemp(prefix=f"jobapply-apply-{job_context.job_id}-")
+
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
@@ -137,6 +146,7 @@ def apply_job(job_context: JobContext, tailored_resume: TailoredResume, dry_run:
         stderr=subprocess.STDOUT,
         text=True,
         env=env,
+        cwd=spawn_cwd,
     )
     proc.stdin.write(prompt)
     proc.stdin.close()
