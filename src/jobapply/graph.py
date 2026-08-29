@@ -8,7 +8,7 @@ from jobapply.schemas import JobContext
 class PipelineState(BaseModel):
     """Shared state threaded through the pipeline graph. Grows a field per
     stage as PLAN.md phases are built (tailored_resume after Phase 2,
-    field_map after Phase 4c)."""
+    apply_result after Phase 4c)."""
 
     job_url: str
     job_context: JobContext | None = None

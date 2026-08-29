@@ -88,10 +88,11 @@ so keep them in sync when a schema changes.
   what was rewritten, and the license implication (fine for personal use,
   worth reconsidering before ever distributing this repo). Its original
   CAPTCHA-solving section (CapSolver API + a self-solving puzzle fallback)
-  is commented out, not deleted, after live testing found it structurally
-  blind to standard reCAPTCHA and prone to auto-solving anyway with no API
-  key configured — see ISSUE.md. The active `_build_captcha_section()` is
-  a simple bounded-retry policy: try twice, then escalate.
+  is commented out, not deleted — it was prone to auto-solving puzzle/audio
+  challenges itself with no API key configured, the opposite of this
+  project's escalate-to-human policy. See ISSUE.md. The active
+  `_build_captcha_section()` is a simple bounded-retry policy: try twice,
+  then escalate. Not yet tested against a real CAPTCHA.
 - `mcp_config.py` builds the MCP server config passed to that session:
   Playwright (with a persistent `--user-data-dir` so login cookies survive
   across jobs) and Gmail (`@gongrzhe/server-gmail-autoauth-mcp`, for OTP

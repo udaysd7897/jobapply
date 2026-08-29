@@ -13,13 +13,13 @@ learning goal.
 
 Structure (`src/jobapply/graph.py`): a `StateGraph` over a single pydantic
 `PipelineState` that threads through every stage (`job_url` in;
-`job_context`, and later `tailored_resume` / `field_map`, accumulate as
+`job_context`, and later `tailored_resume` / `apply_result`, accumulate as
 stages complete; `error` set by any node that fails). Each PLAN.md phase
 adds one node plus an edge — `fetch_jd` (Phase 1) is wired up; resume
 customization (Phase 2) and autofill (Phase 4c) will follow the same
-pattern. Escalation (Phase 6) will read `state.error` / low-confidence
-fields rather than needing conditional graph edges, keeping the graph itself
-linear.
+pattern. Escalation (Phase 6) will read `state.error` / `ApplyResult.result_code`
+(`captcha`/`login_issue`/`failed`) rather than needing conditional graph
+edges, keeping the graph itself linear.
 
 ## Data Contracts (PLAN.md Phase 0)
 
@@ -29,10 +29,16 @@ Four JSON contracts pass between stages, defined as pydantic models in
 
 - `job_context.json` — output of the JD-fetch agent (Phase 1); input to
   resume customization (Phase 2) and autofill (Phase 4c).
-- `tailored_resume.json` — output of resume customization (Phase 2).
-  **Open**: `resume_file`'s format depends on the still-unresolved
-  REQUIREMENT.md §19.1 question (Overleaf API vs. `.docx`); currently
-  defaulted to `.docx` as a placeholder.
+- `tailored_resume.json` — output of resume customization (Phase 2, not yet
+  built). **Open**: `resume_file`'s format depends on the still-unresolved
+  REQUIREMENT.md §19.1 question (Overleaf API vs. `.docx`) — the schema has
+  no default (`resume_file: str`, plain required field); `docs/examples/`
+  uses `.docx` only as an illustrative value. At runtime, `prompt.py`'s
+  `build_prompt` always derives a `.pdf` path via
+  `Path(resume_file).with_suffix(".pdf")` regardless of `resume_file`'s
+  actual extension, since the apply agent uploads a PDF — live tests so
+  far have passed a real `.pdf` (`ResumeAI.pdf`) directly, bypassing this
+  open question rather than resolving it.
 - `apply_result.json` — output of the autofill agent (Phase 4c): one
   outcome per application (`applied` / `expired` / `captcha` / `login_issue`
   / `failed`), not a per-field confidence score. Revised from an original
@@ -87,8 +93,8 @@ changes to agent logic.
 ## Autofill/Apply Agent (PLAN.md Phase 4c)
 
 **Decision**: drive the browser via the Claude Code CLI in headless/print
-mode (`claude -p ... --output-format json`), spawned as a subprocess per
-job, with a Playwright MCP server configured for the invocation. Not the
+mode (`claude -p ... --output-format stream-json`), spawned as a subprocess
+per job, with a Playwright MCP server configured for the invocation. Not the
 Anthropic API — the CLI authenticates against the user's Claude Code Pro
 subscription, so this consumes Pro-plan usage rather than metered API
 billing (no developer/API credits available).
@@ -125,20 +131,16 @@ plans, resolved explicitly rather than silently inherited**:
   (CapSolver API + a manual fallback where the agent tries to solve
   puzzle/audio challenges itself) is now **disabled** — commented out in
   `prompt.py`, not deleted, in case any of it is worth reviving later.
-  Live testing surfaced two problems with it: (1) its JS `browser_evaluate`
-  detection script is structurally blind to standard reCAPTCHA, since
-  `document.querySelector` can't see into the cross-origin iframe it
-  renders in (Playwright's own `browser_snapshot` sees it fine — the
-  prompt just never told the agent to check there); (2) with no
-  `CAPSOLVER_API_KEY` configured, it always fell to the manual-fallback
-  path, which is exactly the ToS-risk/self-solving behavior PLAN.md Phase
-  8 originally wanted to avoid. Replaced with a much simpler policy: try
-  to interact with any detected verification widget at most twice: if
-  still unresolved, output `RESULT:CAPTCHA` and stop. No detection script,
-  no external solving API, no puzzle-solving — this restores Phase 8's
-  original "escalate, don't auto-solve" intent while still giving the
-  agent one or two reasonable attempts at simple cases (e.g. a
-  low-risk-scored reCAPTCHA checkbox that passes without a challenge).
+  Detection itself was not the problem (live testing showed the agent
+  successfully clicking a reCAPTCHA checkbox); the actual issue is that
+  with no `CAPSOLVER_API_KEY` configured, the section's manual fallback
+  has the agent try to solve puzzle/audio challenges itself — exactly the
+  ToS-risk/self-solving behavior PLAN.md Phase 8 originally wanted to
+  avoid. Replaced with a much simpler policy: try to interact with any
+  detected verification widget at most twice; if still unresolved, output
+  `RESULT:CAPTCHA` and stop. No external solving API, no puzzle-solving —
+  this restores Phase 8's original "escalate, don't auto-solve" intent.
+  Not yet tested against a real CAPTCHA.
 - **Per-answer confidence**: dropped. The copied prompt has the agent answer
   screening questions directly and confidently, with no self-reported
   confidence per answer — matches REQUIREMENT.md Resolved Product Decisions
@@ -156,11 +158,20 @@ oversight on their part). An allow-list of exactly the two read-only tools
 needed for OTP retrieval is safer on a real personal Gmail account and
 doesn't depend on staying in sync with the server's full tool list.
 
-One-time setup (not yet done): create a Google OAuth client, download
-`gcp-oauth.keys.json`, place in `~/.gmail-mcp/`, run
+One-time setup (done — completed 2026-08-29): create a Google OAuth client,
+download `gcp-oauth.keys.json`, place in `~/.gmail-mcp/`, run
 `npx @gongrzhe/server-gmail-autoauth-mcp auth` once to complete the browser
 consent flow and store `~/.gmail-mcp/credentials.json`. After that, the
 Gmail MCP server works globally without re-authenticating per job.
+
+**Caveat**: the Google Cloud OAuth app is in "Testing" publishing status
+(not verified), so per Google's policy the resulting refresh token expires
+7 days after the consent flow — after that, Gmail MCP calls will start
+failing until the `npx ... auth` flow above is redone. Publishing to
+"Production" would avoid this, but the scope this server requests
+(`gmail.modify`) is a Restricted scope requiring Google's CASA security
+review to verify — not practical for a personal single-user tool, so
+redoing this flow roughly weekly is the accepted tradeoff for now.
 
 **Persistent browser profile**: `@playwright/mcp` is passed
 `--user-data-dir=<repo-local path>` so login sessions/cookies survive across
@@ -180,8 +191,10 @@ strips `CLAUDECODE`/`CLAUDE_CODE_ENTRYPOINT` so the subprocess doesn't think
 it's nested inside another Claude Code session.
 
 **Caveats to build around**:
-- Pro-plan usage (5-hour rolling window + weekly cap) is shared with all
-  other Claude Code usage on the account, including normal development —
+- Pro-plan usage limits (exact mechanism not verified in this repo — general
+  Claude subscription plans have rolling-window and/or weekly caps, but the
+  precise numbers aren't confirmed here) are shared with all other Claude
+  Code usage on the account, including normal development —
   worth watching if application volume scales up.
 - Playwright MCP has no built-in dry-run/no-submit mode; the Phase 4c
   dry-run boundary ("fill fields, stop before submit") is enforced purely by
@@ -190,14 +203,28 @@ it's nested inside another Claude Code session.
 
 **Module layout** (`src/jobapply/agents/apply/`):
 - `profile.py` — loads `config/profile.json` (real data, gitignored; template
-  at `config/profile.example.json`, shape matches ApplyPilot's profile so
-  the adapted `prompt.py` needs no remapping).
+  at `config/profile.example.json`). Started out matching ApplyPilot's
+  profile shape closely; has since diverged as real fields were filled in
+  (`date_of_birth`, a restructured `compensation` block with real CTC
+  figures, `notice_period_days`) and unused ApplyPilot concepts were
+  dropped (`location_preferences`) — check `profile.example.json` directly
+  for the current shape rather than assuming it still mirrors ApplyPilot.
 - `prompt.py` — adapted from ApplyPilot, see above.
 - `mcp_config.py` — builds the Playwright + Gmail MCP server config.
 - `agent.py` — `apply_job(job_context, tailored_resume, dry_run) -> ApplyResult`;
-  one sequential `subprocess.run` per job, no threading/dashboard/SQLite.
+  one sequential `subprocess.Popen` per job, no threading/dashboard/SQLite.
+  Streams the full session to `runs/<job_id>/session_log.jsonl` (added
+  after a live test where the single-final-result `subprocess.run` version
+  gave no way to diagnose an unexpected CAPTCHA outcome) and extracts a
+  field→value audit list via `extract_filled_fields()` into
+  `runs/<job_id>/filled_fields.json` — see CLAUDE.md for why that was added.
 
-Structurally verified (`build_prompt` runs end-to-end against placeholder
-profile data and a real PDF, producing a well-formed ~19K-char prompt); the
-full `claude -p` + MCP round trip against a real posting is still Phase 4c's
-Test step 1, not yet run.
+Live-tested against real postings (not just structurally): a Workday
+posting (DXC) failed twice on the employer's own resume-upload endpoint
+returning persistent HTTP 500s, unrelated to this code; two other-ATS
+postings (SuccessFactors, ApplyToJob) each returned a clean `applied`
+`ApplyResult`; a BambooHR posting was run twice with full session
+logging, and the second run correctly stopped before clicking Submit per
+the dry-run instruction (logged verbatim: "this is a dry run"). Gmail OTP
+retrieval has not been exercised yet — none of the postings tested so far
+triggered an account-signup/email-verification flow.

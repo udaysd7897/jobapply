@@ -8,7 +8,10 @@ phase existing yet.
 Decide the framework (simple function chain vs. something like LangGraph) and
 lock the JSON schemas that pass between agents: `job_context.json` (JD +
 metadata), tailored resume output, `field_map.json` (portal field -> answer),
-`run_summary.json`.
+`run_summary.json`. (`field_map.json` was the original plan here — it was
+later replaced by `apply_result.json` during Phase 4c; see that section and
+TECH_REQUIREMENT.md for why. Current contracts are whatever
+`src/jobapply/schemas.py` defines, not this list.)
 
 **Test**: write one hand-crafted example of each JSON file and confirm they
 contain everything the next agent will need — no code yet, just schema
@@ -63,7 +66,7 @@ summary.
 ## Phase 4c — Autofill agent, single ATS first
 Revised approach (see TECH_REQUIREMENT.md: Autofill/Apply Agent): instead of
 hand-written Playwright selectors per ATS, drive the browser via the Claude
-Code CLI in headless mode (`claude -p ... --output-format json`), spawned as
+Code CLI in headless mode (`claude -p ... --output-format stream-json`), spawned as
 a subprocess per job with a Playwright MCP server (browser) and a Gmail MCP
 server (OTP retrieval during account-creation flows) attached — using Claude
 Code Pro-plan usage, not API billing. The subprocess is given `JobContext` +
@@ -75,11 +78,11 @@ confidence map (REQUIREMENT.md Resolved Product Decisions #4-5). `captcha`,
 
 The prompt itself is adapted from ApplyPilot's `prompt.py` (copied in,
 remapped to our contracts). Its CAPTCHA-solving section was kept as-is
-initially, then revisited after the first dry run per plan: live testing
-found it structurally blind to standard reCAPTCHA and, with no CapSolver
-key configured, always falling to a self-solving fallback — the opposite
-of Phase 8's intent below. Replaced with a simple bounded-retry policy
-(try twice, then escalate) — see TECH_REQUIREMENT.md and ISSUE.md.
+initially, then revisited after the first dry run per plan and commented
+out (root cause not confirmed), replaced with a simple bounded-retry
+policy (try twice, then escalate) that restores Phase 8's original intent
+— see TECH_REQUIREMENT.md and ISSUE.md. Not yet tested against a real
+CAPTCHA.
 
 Pick one ATS (Workday or Greenhouse) first. Run in **dry-run mode** — fill
 fields, stop before final submit. Note: Playwright MCP has no built-in
@@ -92,9 +95,16 @@ the chosen ATS. Confirm: (a) it returns a clean `ApplyResult`, (b) it stops
 before clicking submit, (c) OTP retrieval via Gmail MCP works if an account
 signup flow triggers one.
 
+Status: run several times against real postings (DXC/Workday, SuccessFactors,
+ApplyToJob, BambooHR) — see TECH_REQUIREMENT.md for what each returned.
+(a) confirmed every time. (b) confirmed on one logged run; not yet confirmed
+reliable across repeated runs. (c) not yet exercised — no tested posting has
+triggered an account-signup/OTP flow.
+
 **Test, step 2 (wired in)**: run against 2-3 real postings on that ATS as a
 graph node, manually verify the result and any filled fields, confirm it
-stops before submit every time.
+stops before submit every time. Not started — `apply_job` is not yet added
+as a graph node (see `graph.py`, only `fetch_jd` is wired up).
 
 ## Phase 5 — Chain the agents
 Wire JD-fetch -> resume-customize -> autofill with per-job state written to
@@ -108,8 +118,9 @@ into a second job's run.
 Wire the escalation channel — pick the simplest thing that works for dev
 (even a local notification/log) before committing to WhatsApp.
 
-**Test**: force a hard error and force a low-confidence answer separately,
-confirm each produces an escalation message with enough context (link,
+**Test**: force a hard pipeline error and force each escalating `ApplyResult`
+outcome (`captcha`, `login_issue`, `failed`) separately, confirm each
+produces an escalation message with enough context (link,
 error, current state) to act on.
 
 ## Phase 7 — Full run + summary
