@@ -19,3 +19,8 @@ runs/
 config/profile.json
 *.pdf
 .mcp-apply*.json
+
+# Playwright MCP debug artifacts (screenshots/snapshots of live sessions,
+# may contain real form data) and ad-hoc test scripts
+.playwright-mcp/
+temp/
