@@ -33,9 +33,14 @@ Four JSON contracts pass between stages, defined as pydantic models in
   **Open**: `resume_file`'s format depends on the still-unresolved
   REQUIREMENT.md §19.1 question (Overleaf API vs. `.docx`); currently
   defaulted to `.docx` as a placeholder.
-- `field_map.json` — output of the autofill agent's field-mapping step
-  (Phase 4c). Each field carries a `confidence`; low confidence is the
-  signal that triggers human escalation (Phase 6).
+- `apply_result.json` — output of the autofill agent (Phase 4c): one
+  outcome per application (`applied` / `expired` / `captcha` / `login_issue`
+  / `failed`), not a per-field confidence score. Revised from an original
+  `field_map.json` design (per-field `confidence` driving escalation) after
+  adopting the Claude-Code-driven approach below, which reports an
+  application-level result rather than a field-by-field map; `captcha`,
+  `login_issue`, and `failed` are what trigger human escalation (Phase 6)
+  now — see REQUIREMENT.md Resolved Product Decisions #4-5.
 - `run_summary.json` — sent to the escalation channel after a full run
   completes (Phase 7).
 
@@ -95,10 +100,74 @@ letting an LLM drive the browser directly avoids hand-writing and
 maintaining brittle per-ATS DOM automation. Confirmed available on this
 machine: `claude` CLI (v2.1.251), `node` (v24.15.0), `npx`.
 
-The subprocess is required to return output shaped into the existing
-`FieldMap` contract (`field_id`, `label`, `value`, `source`, `confidence`)
-via `--output-format json` — nothing downstream (confidence-based escalation,
-`run_summary.json`) changes because of this.
+The subprocess reports one `ApplyResult` per job (`applied` / `expired` /
+`captcha` / `login_issue` / `failed:detail`) rather than a per-field
+`FieldMap` — see Data Contracts above. `captcha`, `login_issue`, and
+`failed` escalate to a human (Phase 6); `applied` and `expired` do not.
+
+**Adapted from ApplyPilot** (`~/ApplyPilot`, `Pickle-Pixel/ApplyPilot`,
+AGPL-3.0-only — see the evaluation in this doc's history/PLAN.md for why
+its `apply` module as a whole wasn't reused wholesale): its `prompt.py` is
+copied into this repo as the starting prompt, adapted to our contracts
+(`JobContext`/`TailoredResume`/our profile JSON) instead of ApplyPilot's own
+config shapes. Since this is a personal, non-distributed tool the AGPL
+provenance of this one file is a non-issue in practice, but worth knowing if
+this repo is ever shared. Everything else from ApplyPilot's `apply` module
+(threading/`ThreadPoolExecutor` for parallel workers, the SQLite job queue,
+`dashboard.py`'s live rendering, per-worker Chrome/CDP-port management in
+`chrome.py`) is dropped — v1 processes one job at a time, sequentially, with
+state on disk (Phase 5) instead of a job database, and plain print/log
+output instead of a dashboard.
+
+**Decisions on two things the copied prompt does that don't match earlier
+plans, resolved explicitly rather than silently inherited**:
+- **CAPTCHA**: the copied prompt includes ApplyPilot's full CAPTCHA-solving
+  section (CapSolver API + a manual fallback where the agent itself solves
+  puzzle/audio challenges) — the opposite of PLAN.md Phase 8's original
+  "escalate to human, don't auto-solve" decision. Kept as-is for now per
+  explicit instruction, to be revisited later; no `CAPSOLVER_API_KEY` is
+  configured, so it currently runs the manual-fallback path (attempts the
+  puzzle/audio solve itself) before giving up with `RESULT:CAPTCHA`, rather
+  than escalating immediately on detection.
+- **Per-answer confidence**: dropped. The copied prompt has the agent answer
+  screening questions directly and confidently, with no self-reported
+  confidence per answer — matches REQUIREMENT.md Resolved Product Decisions
+  #4-5 (outcome-level escalation only).
+
+**Gmail MCP server (`@gongrzhe/server-gmail-autoauth-mcp`)**: required, not
+optional — most ATS portals require creating a per-company account, and
+email OTP verification is common during that flow. Registered alongside the
+Playwright MCP server in the same `--mcp-config`. Scoped with an
+**allow-list** (`--allowedTools mcp__gmail__search_emails,mcp__gmail__read_email`),
+not ApplyPilot's deny-list approach — the Gmail MCP server exposes ~19 tools
+including `send_email`, `delete_email`, and label/filter management, and
+ApplyPilot's own deny-list leaves `send_email` allowed (arguably an
+oversight on their part). An allow-list of exactly the two read-only tools
+needed for OTP retrieval is safer on a real personal Gmail account and
+doesn't depend on staying in sync with the server's full tool list.
+
+One-time setup (not yet done): create a Google OAuth client, download
+`gcp-oauth.keys.json`, place in `~/.gmail-mcp/`, run
+`npx @gongrzhe/server-gmail-autoauth-mcp auth` once to complete the browser
+consent flow and store `~/.gmail-mcp/credentials.json`. After that, the
+Gmail MCP server works globally without re-authenticating per job.
+
+**Persistent browser profile**: `@playwright/mcp` is passed
+`--user-data-dir=<repo-local path>` so login sessions/cookies survive across
+jobs, instead of ApplyPilot's separate Chrome-process + CDP-port-per-worker
+management (which exists to support their parallel workers — not needed
+here).
+
+**Critical: `ANTHROPIC_API_KEY` must be stripped from the subprocess env.**
+Verified directly against this installed CLI (v2.1.251): if
+`ANTHROPIC_API_KEY` is set in the environment, `claude` uses it and bills
+API credits instead of the Pro-plan login, silently defeating the entire
+point of this design (no developer/API credits available). Confirmed fix:
+`env.pop("ANTHROPIC_API_KEY", None)` before spawning — with the key
+stripped, `claude -p` authenticates via the stored Pro-plan OAuth login
+instead. Implemented in `src/jobapply/agents/apply/agent.py`, which also
+strips `CLAUDECODE`/`CLAUDE_CODE_ENTRYPOINT` so the subprocess doesn't think
+it's nested inside another Claude Code session.
 
 **Caveats to build around**:
 - Pro-plan usage (5-hour rolling window + weekly cap) is shared with all
@@ -108,6 +177,17 @@ via `--output-format json` — nothing downstream (confidence-based escalation,
   dry-run boundary ("fill fields, stop before submit") is enforced purely by
   prompt instruction, which is weaker than a hard-coded stop. Needs
   verification before trusting it unsupervised.
-- Confidence-per-field does not come for free — the prompt must explicitly
-  require the agent to self-report a confidence score per answer, or the
-  escalation trigger has nothing to read.
+
+**Module layout** (`src/jobapply/agents/apply/`):
+- `profile.py` — loads `config/profile.json` (real data, gitignored; template
+  at `config/profile.example.json`, shape matches ApplyPilot's profile so
+  the adapted `prompt.py` needs no remapping).
+- `prompt.py` — adapted from ApplyPilot, see above.
+- `mcp_config.py` — builds the Playwright + Gmail MCP server config.
+- `agent.py` — `apply_job(job_context, tailored_resume, dry_run) -> ApplyResult`;
+  one sequential `subprocess.run` per job, no threading/dashboard/SQLite.
+
+Structurally verified (`build_prompt` runs end-to-end against placeholder
+profile data and a real PDF, producing a well-formed ~19K-char prompt); the
+full `claude -p` + MCP round trip against a real posting is still Phase 4c's
+Test step 1, not yet run.

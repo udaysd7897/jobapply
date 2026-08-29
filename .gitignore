@@ -14,3 +14,8 @@ runs/
 
 # Secrets
 .env
+
+# Personal data — real values, not the .example.json templates
+config/profile.json
+*.pdf
+.mcp-apply*.json

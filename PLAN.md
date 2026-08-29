@@ -64,12 +64,20 @@ summary.
 Revised approach (see TECH_REQUIREMENT.md: Autofill/Apply Agent): instead of
 hand-written Playwright selectors per ATS, drive the browser via the Claude
 Code CLI in headless mode (`claude -p ... --output-format json`), spawned as
-a subprocess per job with a Playwright MCP server attached — using Claude
+a subprocess per job with a Playwright MCP server (browser) and a Gmail MCP
+server (OTP retrieval during account-creation flows) attached — using Claude
 Code Pro-plan usage, not API billing. The subprocess is given `JobContext` +
 `TailoredResume` + the demographic JSON + the job-specific answer bank, and
-must return output shaped into the `FieldMap` contract (`field_id`, `label`,
-`value`, `source`, `confidence`) so escalation (Phase 6) and everything
-downstream is unaffected by this implementation change.
+returns one `ApplyResult` per job (`applied` / `expired` / `captcha` /
+`login_issue` / `failed:detail`) — an outcome-level result, not a per-field
+confidence map (REQUIREMENT.md Resolved Product Decisions #4-5). `captcha`,
+`login_issue`, and `failed` escalate to Phase 6; `applied`/`expired` don't.
+
+The prompt itself is adapted from ApplyPilot's `prompt.py` (copied in,
+remapped to our contracts). Its CAPTCHA-solving section is kept as-is for
+now (not stripped to an immediate-escalate version) — a known, deliberate
+deviation from this phase's original "escalate on CAPTCHA" framing, to
+revisit after the first dry run.
 
 Pick one ATS (Workday or Greenhouse) first. Run in **dry-run mode** — fill
 fields, stop before final submit. Note: Playwright MCP has no built-in
@@ -78,13 +86,13 @@ must be verified, not assumed.
 
 **Test, step 1 (isolated)**: before wiring into the graph, run one raw
 `claude -p` + Playwright MCP invocation by hand against a real posting on
-the chosen ATS. Confirm: (a) it returns clean JSON matching the `FieldMap`
-shape, (b) it self-reports a confidence per field, (c) it stops before
-clicking submit.
+the chosen ATS. Confirm: (a) it returns a clean `ApplyResult`, (b) it stops
+before clicking submit, (c) OTP retrieval via Gmail MCP works if an account
+signup flow triggers one.
 
 **Test, step 2 (wired in)**: run against 2-3 real postings on that ATS as a
-graph node, manually verify every filled field, confirm it stops before
-submit every time.
+graph node, manually verify the result and any filled fields, confirm it
+stops before submit every time.
 
 ## Phase 5 — Chain the agents
 Wire JD-fetch -> resume-customize -> autofill with per-job state written to

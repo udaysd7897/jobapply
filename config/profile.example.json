@@ -1,0 +1,48 @@
+{
+  "personal": {
+    "full_name": "Jane Doe",
+    "preferred_name": "Jane",
+    "email": "jane.doe@example.com",
+    "password": "used only for creating per-employer portal accounts during apply",
+    "phone": "+1 555 123 4567",
+    "address": "123 Main St",
+    "city": "San Francisco",
+    "province_state": "CA",
+    "country": "USA",
+    "postal_code": "94103",
+    "linkedin_url": "https://linkedin.com/in/janedoe",
+    "github_url": "https://github.com/janedoe",
+    "portfolio_url": "",
+    "website_url": ""
+  },
+  "work_authorization": {
+    "legally_authorized_to_work": "Yes",
+    "require_sponsorship": "No",
+    "work_permit_type": ""
+  },
+  "compensation": {
+    "salary_currency": "USD",
+    "salary_expectation": "150000",
+    "salary_range_min": "150000",
+    "salary_range_max": "180000",
+    "currency_conversion_note": ""
+  },
+  "experience": {
+    "years_of_experience_total": "5",
+    "education_level": "Bachelor's in Computer Science",
+    "target_role": "AI Engineer"
+  },
+  "availability": {
+    "earliest_start_date": "Immediately"
+  },
+  "eeo_voluntary": {
+    "gender": "Decline to self-identify",
+    "race_ethnicity": "Decline to self-identify",
+    "veteran_status": "I am not a protected veteran",
+    "disability_status": "I do not wish to answer"
+  },
+  "location_preferences": {
+    "primary": "San Francisco",
+    "accept_patterns": ["San Francisco", "Remote"]
+  }
+}

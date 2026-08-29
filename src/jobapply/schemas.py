@@ -46,28 +46,31 @@ class TailoredResume(BaseModel):
     skills_added: list[str] = Field(max_length=2)
 
 
-class FilledField(BaseModel):
-    field_id: str
-    label: str
-    value: str | None
-    source: str = Field(description="'static' (from the demographic JSON) or 'semantic_search'")
-    confidence: float = Field(ge=0.0, le=1.0)
+class ResultCode(str, Enum):
+    APPLIED = "applied"
+    EXPIRED = "expired"
+    CAPTCHA = "captcha"
+    LOGIN_ISSUE = "login_issue"
+    FAILED = "failed"
 
 
-class FieldMap(BaseModel):
-    """Output of the autofill agent's field-mapping step (PLAN.md Phase 4c).
-    See docs/examples/field_map.json."""
+class ApplyResult(BaseModel):
+    """Output of the autofill agent (PLAN.md Phase 4c): a Claude Code session
+    driving the browser reports one outcome per application, not a per-field
+    confidence score (REQUIREMENT.md Resolved Product Decisions #4-5).
+    See docs/examples/apply_result.json."""
 
     job_id: str
     portal: Portal
-    fields: list[FilledField]
+    result_code: ResultCode
+    detail: str | None = Field(default=None, description="Brief reason, e.g. 'not_eligible_location' for a failed result")
 
 
 class JobResult(BaseModel):
     job_id: str
     company: str
     title: str
-    status: str = Field(description="'applied', 'escalated', or 'errored'")
+    status: str = Field(description="'applied', 'skipped' (expired), 'escalated' (captcha/login_issue/failed), or 'errored' (pipeline error before apply)")
     reason: str | None = None
 
 
