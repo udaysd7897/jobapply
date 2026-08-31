@@ -53,6 +53,51 @@ Four JSON contracts pass between stages, defined as pydantic models in
 All four validate against their pydantic models — see
 `src/jobapply/schemas.py`.
 
+## Resume Tailoring (PLAN.md Phase 2)
+
+**Format decision (resolves REQUIREMENT.md §19.1)**: `config/base_resume.html`
+is the source of truth — real personal data, gitignored, alongside
+`config/profile.json`. Not Overleaf/LaTeX, not `.docx`. Rationale: HTML has
+addressable elements a plain code edit can target precisely (a specific
+bullet list, a specific skills container), and Playwright already gives us
+headless Chromium for free — no new format-specific library needed.
+
+**Rendering**: HTML -> PDF via Playwright's headless Chromium, the same
+mechanism `~/ApplyPilot`'s `src/applypilot/scoring/pdf.py` uses:
+`page.set_content(html, wait_until="networkidle")` then
+`page.pdf(path=..., format="Letter", print_background=True)`. This is a
+two-line usage of Playwright's own public API, not a substantial adaptation
+of ApplyPilot's code (their `pdf.py` also parses a plain-text resume format
+into HTML via a template — we skip that entirely since the base resume is
+already hand-authored HTML), so no AGPL-provenance note is needed here the
+way there is for `prompt.py`.
+
+**Decide vs. edit, kept as two separate steps**: the LLM (Groq, via the
+Phase 3 `llm.complete()` interface) only ever decides *what* to add — it
+compares the resume against the JD, classifies every JD requirement into
+covered / reframe / missing, and returns the single highest-impact reframe
+candidate (one bullet line) and the single highest-impact missing candidate
+(one keyword) as small JSON. A separate, plain-code step then performs the
+actual HTML edit (insert the bullet into the right target's list element,
+insert the keyword into the skills list element) and renders to PDF. The
+LLM is deliberately never asked to output or rewrite the whole HTML file —
+that would risk it exceeding the one-line/one-keyword constraint REQUIREMENT.md
+sets, with no structural guarantee stopping it.
+
+**Missing-keyword cap revised to exactly one** (REQUIREMENT.md Resolved
+Product Decisions #8), down from the original "up to two" (§19.5) — only
+one new skill area can plausibly be picked up/credible at a time.
+
+**`TailoredResume.resume_file` now means the rendered PDF**, not the HTML
+source — that's the file Phase 4c's apply agent actually uploads. The HTML
+is an intermediate artifact (exact storage location under `runs/<job_id>/`
+not yet decided).
+
+**Not started, blocked on**: `config/base_resume.html` doesn't exist yet.
+Its exact element structure (specific ids/classes for the Harmony bullet
+list, the Fanatics SWE2 bullet list, and the skills list) isn't finalized —
+needed before the edit step can be written.
+
 ## LLM Provider
 
 Relates to PLAN.md Phase 3 (LLM provider abstraction). All agent calls go
