@@ -47,10 +47,16 @@ def fetch_job_context(job_url: str, llm: LLM | None = None) -> JobContext:
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page()
-        page.goto(job_url, wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
+        # networkidle, not a fixed sleep: confirmed live that a Workday
+        # posting's body is still completely empty at domcontentloaded+2s
+        # (client-rendered SPA) and only populates ~6s in. A fixed timeout
+        # is fragile across different sites' render speed.
+        page.goto(job_url, wait_until="networkidle")
         page_text = page.inner_text("body")
         browser.close()
+
+    if len(page_text.strip()) < 200:
+        raise ValueError(f"page text too short ({len(page_text.strip())} chars) after networkidle -- page likely didn't render: {job_url}")
 
     metadata = _extract_metadata(llm, page_text)
     company = metadata["company"]

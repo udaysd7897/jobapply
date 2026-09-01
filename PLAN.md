@@ -36,50 +36,52 @@ testing) plus `config/base_resume.html` (source of truth, gitignored real
 resume). Two-step design, deliberately split so the LLM only ever decides
 *what* to add and plain code performs the actual edit:
 
-1. **Decide** (LLM, one call): compare the resume text against the JD and
-   sort every JD requirement into one of three buckets — "covered" (already
-   demonstrated, no action), "reframe" (not stated, but an existing bullet
-   shows adjacent/implied experience that could honestly be reworded in
-   place), "missing" (no basis in the resume at all). Pick the single
-   highest-impact "reframe" candidate (or none) — quoting the target
-   entry's existing bullet verbatim plus its rewritten replacement — and
-   the single highest-impact "missing" candidate (or none, revised from
+1. **Decide** (LLM, one call): identify one new bullet to add — the JD's
+   most *distinctive* unmet requirement that's genuinely implied by real
+   experience anywhere in the resume (not a generic restatement of
+   something the target entry's own bullets already cover), and the
+   single highest-impact missing skill keyword (or none, revised from
    REQUIREMENT.md's original "up to two" to exactly one — see Resolved
    Product Decisions #8). Output as small JSON:
-   `{"reframe": {"original_bullet": ..., "reframed_line": ...} | null, "missing": {"keyword": ..., "category": ...} | null}`.
-2. **Edit + render** (plain code, no LLM): replace that one bullet's text
-   in place in the correct target's bullet list (Harmony for AI roles,
-   Fanatics SWE2 for ML roles) — never appends a new bullet, so the
-   section's length never grows — and insert the one keyword into the
-   skills list, both by targeting specific elements in the HTML. Never a
-   full-file LLM rewrite, so the edit can't accidentally exceed one
-   bullet + one keyword. Render the edited HTML to PDF via Playwright's
-   headless Chromium (`page.set_content()` + `page.pdf()` — see
-   TECH_REQUIREMENT.md: Resume Tailoring). `resume_file` in the output
-   `TailoredResume` points at this rendered PDF, not the HTML.
+   `{"new_bullet": ... | null, "missing": {"keyword": ..., "category": ...} | null}`.
+   This went through a reframe-in-place iteration first (quote an existing
+   bullet, replace its wording) — dropped after live-testing showed it
+   converging on rewording the same generic bullet regardless of JD; see
+   TECH_REQUIREMENT.md for the full history.
+2. **Edit + render** (plain code, no LLM): append the one new bullet to
+   the correct target's bullet list (Harmony for AI roles, Fanatics SWE2
+   for ML roles) and insert the one keyword into the skills list, both by
+   targeting specific elements in the HTML. Never a full-file LLM rewrite,
+   so the edit can't accidentally exceed one bullet + one keyword. Render
+   the edited HTML to PDF via Playwright's headless Chromium
+   (`page.set_content()` + `page.pdf()` — see TECH_REQUIREMENT.md: Resume
+   Tailoring). `resume_file` in the output `TailoredResume` points at this
+   rendered PDF, not the HTML.
 
 **Test**: run against 5 curated JDs (2 clearly AI, 2 clearly ML, 1 ambiguous)
-and manually check: correct bullet targeted (Harmony vs. Fanatics), the
-reframed line is truthful/implied by the bullet it replaced, bullet count
-in that section is unchanged, at most one non-duplicate keyword added, and
+and manually check: correct bullet list targeted (Harmony vs. Fanatics),
+the new bullet is truthful/implied and meaningfully different per JD (not
+a near-duplicate across JDs), at most one non-duplicate keyword added, and
 the rendered PDF opens correctly with the edit visible in the right place.
 This phase never needs a browser for the decide step — only the render
 step touches Playwright, and even that never navigates anywhere.
 
-Built (`src/jobapply/agents/resume.py`) and tested live against a real Groq
-call for both roles: an AI Engineer JD correctly targeted Harmony, and an
-ML Engineer JD correctly targeted Fanatics SWE2, each with an honest
-in-place reframe of a real existing bullet. `config/base_resume.html`
-exists with `id="harmony-bullets"`, `id="fanatics-swe2-bullets"`,
-`id="skills-section"` anchors. Testing surfaced and fixed three real
-issues — two in skill-category matching (exact-match too strict for LLM
-paraphrasing; an HTML-escaping mismatch), and one LLM-reliability issue
-(it proposed a "missing" keyword that was already a literal skill chip,
-despite explicit instruction and the text being in front of it — fixed
-with a deterministic post-check, not more prompt wording) — see
+Built (`src/jobapply/agents/resume.py`) and live-tested against two real
+fetched JDs (Emergent/Greenhouse, Rippling) for the AI Engineer path.
+After the reframe-in-place -> append-distinctive-bullet redesign, the two
+outputs are genuinely different: Emergent (reliability-framed role) got a
+bullet about 24/7 production support and SLA-driven debugging; Rippling
+(HR/IT/Finance, compliance-heavy) got a bullet about IAM policies and
+audit-logging, grounded in the resume's real HIPAA/SOC2/IAM content.
+Testing surfaced and fixed three real issues along the way — two in
+skill-category matching (exact-match too strict for LLM paraphrasing; an
+HTML-escaping mismatch), and one LLM-reliability issue (it proposed a
+"missing" keyword that was already a literal skill chip, twice, despite
+explicit instruction and the text being in front of it — fixed with a
+deterministic post-check, not more prompt wording) — see
 TECH_REQUIREMENT.md. Not yet run against the full 5-JD curated set (2 AI,
-2 ML, 1 ambiguous) this phase's test calls for — only one real JD per role
-tested so far.
+2 ML, 1 ambiguous) or against a real ML Engineer JD with this final
+design.
 
 ## Phase 3 — LLM provider abstraction
 Pick a free/open-source LLM, but wrap it behind one interface

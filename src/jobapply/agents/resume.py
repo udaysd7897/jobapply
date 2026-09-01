@@ -30,17 +30,23 @@ ANALYSIS_SYSTEM_PROMPT = """\
 You compare a resume against a job description and make two separate,
 independent decisions:
 
-1. REFRAME (rewrite in place, never add a new bullet): look at the
-   existing bullets listed under TARGET BULLETS below (all belong to
-   "{target_label}"). Pick the ONE bullet that already shows adjacent or
-   implied experience for something the JD asks for but doesn't state
-   explicitly. Rewrite that ONE bullet so the JD-relevant angle is
-   explicit. This is a rewrite of a real existing bullet, not a new
-   fact -- do not invent tools, metrics, or outcomes not already present
-   or clearly implied in that original bullet. If no existing bullet is a
-   defensible fit, output null. Quote the chosen bullet's original text
-   back VERBATIM from the list below, character for character -- this is
-   used to find and replace it, so it must match exactly.
+1. NEW BULLET (added, never replaces or rewrites anything): identify the
+   single most important JD requirement that isn't explicitly stated
+   anywhere in the resume, but is genuinely implied by the candidate's
+   real demonstrated experience -- skills, tools, or achievements actually
+   present anywhere in the resume, not just under "{target_label}". Pick
+   whichever unmet requirement is most distinctive/valuable for THIS
+   specific JD, not a generic restatement of something the existing
+   "{target_label}" bullets (listed below) already cover well. Write ONE
+   new bullet line to add under "{target_label}", phrased as something
+   plausible for that role. Truthful and implied only -- never invent a
+   tool, metric, or outcome not otherwise supported by the resume.
+   Respect chronology: the resume's dated entries show when each role
+   happened. If a skill or tool is only evidenced in a role that happened
+   AFTER "{target_label}", do not attribute it to "{target_label}" -- the
+   candidate could not have used it yet at that time. Only draw supporting
+   evidence from roles at or before "{target_label}"'s own dates. If
+   nothing can be honestly implied under that constraint, output null.
 
 2. MISSING KEYWORD (separate decision): the SINGLE highest-impact JD
    requirement the resume gives no basis for at all -- a real
@@ -49,13 +55,12 @@ independent decisions:
    the resume -- check the Projects and Experience sections too, not just
    the Skills list. Do not propose deeply specialized skills the resume
    shows zero adjacency to. Assign it to the existing skill category it
-   best fits
-   ({categories}), or propose a short new category name only if truly none
-   fit. Output null if nothing is critical enough.
+   best fits ({categories}), or propose a short new category name only if
+   truly none fit. Output null if nothing is critical enough.
 
 Respond with ONLY a JSON object (no markdown fences, no commentary):
 {{
-  "reframe": {{"original_bullet": "<verbatim from TARGET BULLETS>", "reframed_line": "..."}} or null,
+  "new_bullet": "..." or null,
   "missing": {{"keyword": "...", "category": "..."}} or null
 }}
 """
@@ -94,7 +99,7 @@ def _extract_bullets(raw_html: str, bullets_id: str) -> list[str]:
 def _analyze(llm: LLM, resume_text: str, jd_text: str, target_label: str, target_bullets: list[str], categories: list[str]) -> dict:
     system = ANALYSIS_SYSTEM_PROMPT.format(target_label=target_label, categories=", ".join(categories))
     bullets_block = "\n".join(f"- {b}" for b in target_bullets)
-    prompt = f"TARGET BULLETS ({target_label}):\n{bullets_block}\n\nFULL RESUME:\n{resume_text}\n\nJOB DESCRIPTION:\n{jd_text}"
+    prompt = f"EXISTING {target_label.upper()} BULLETS:\n{bullets_block}\n\nFULL RESUME:\n{resume_text}\n\nJOB DESCRIPTION:\n{jd_text}"
     raw = llm.complete(prompt, system=system)
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
@@ -102,30 +107,10 @@ def _analyze(llm: LLM, resume_text: str, jd_text: str, target_label: str, target
     return json.loads(match.group(0))
 
 
-def _replace_bullet(raw_html: str, bullets_id: str, original_bullet: str, reframed_line: str) -> str:
-    body_start, body_end = _find_bullets_list(raw_html, bullets_id)
-    body = raw_html[body_start:body_end]
-
-    li_pattern = re.compile(r"<li>(.*?)</li>", re.DOTALL)
-    wanted = original_bullet.strip()
-    target_match = None
-    for m in li_pattern.finditer(body):
-        if html.unescape(m.group(1)).strip() == wanted:
-            target_match = m
-            break
-    if target_match is None:
-        # Fuzzy fallback: the LLM may not have quoted it 100% verbatim.
-        for m in li_pattern.finditer(body):
-            li_text = html.unescape(m.group(1)).strip()
-            if wanted in li_text or li_text in wanted:
-                target_match = m
-                break
-    if target_match is None:
-        raise ValueError(f"could not find a bullet matching original_bullet under id={bullets_id!r}: {original_bullet!r}")
-
-    replace_start = body_start + target_match.start(1)
-    replace_end = body_start + target_match.end(1)
-    return raw_html[:replace_start] + html.escape(reframed_line) + raw_html[replace_end:]
+def _insert_bullet(raw_html: str, bullets_id: str, added_line: str) -> str:
+    _, body_end = _find_bullets_list(raw_html, bullets_id)
+    new_li = f"<li>{html.escape(added_line)}</li>"
+    return raw_html[:body_end] + new_li + raw_html[body_end:]
 
 
 def _resolve_category(category: str, existing_categories: list[str]) -> str | None:
@@ -179,10 +164,11 @@ def _render_pdf(rendered_html: str, output_path: Path) -> None:
 
 
 def tailor_resume(job_context: JobContext, llm: LLM | None = None) -> TailoredResume:
-    """PLAN.md Phase 2: pick the single highest-impact bullet to reframe
-    IN PLACE (never adds a new bullet) and the single highest-impact
-    missing skill keyword, edit them into config/base_resume.html, and
-    render to PDF. See TECH_REQUIREMENT.md: Resume Tailoring."""
+    """PLAN.md Phase 2: add one new bullet for the JD's most distinctive
+    implied-but-unstated requirement (never rewrites/replaces an existing
+    bullet) and add one missing skill keyword, edit them into
+    config/base_resume.html, and render to PDF. See TECH_REQUIREMENT.md:
+    Resume Tailoring."""
     llm = llm or LLM()
 
     base_html = BASE_RESUME_PATH.read_text()
@@ -194,9 +180,7 @@ def tailor_resume(job_context: JobContext, llm: LLM | None = None) -> TailoredRe
 
     analysis = _analyze(llm, resume_text, job_context.jd_text, target_label, target_bullets, categories)
 
-    reframe = analysis.get("reframe")
-    original_bullet = reframe["original_bullet"] if reframe else None
-    reframed_line = reframe["reframed_line"] if reframe else None
+    added_line = analysis.get("new_bullet")
 
     missing = analysis.get("missing")
     keyword = missing["keyword"] if missing else None
@@ -212,8 +196,8 @@ def tailor_resume(job_context: JobContext, llm: LLM | None = None) -> TailoredRe
         category = None
 
     edited_html = base_html
-    if original_bullet and reframed_line:
-        edited_html = _replace_bullet(edited_html, bullets_id, original_bullet, reframed_line)
+    if added_line:
+        edited_html = _insert_bullet(edited_html, bullets_id, added_line)
     if keyword:
         edited_html = _insert_skill(edited_html, keyword, category, categories)
 
@@ -231,8 +215,7 @@ def tailor_resume(job_context: JobContext, llm: LLM | None = None) -> TailoredRe
         base_resume_version=BASE_RESUME_VERSION,
         experience_edit=ExperienceEdit(
             target=target_field,
-            original_bullet=original_bullet or "(no defensible reframe found)",
-            reframed_line=reframed_line or "(no defensible reframe found)",
+            added_line=added_line or "(no defensible new bullet found)",
         ),
         skills_added=[keyword] if keyword else [],
     )

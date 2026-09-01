@@ -53,6 +53,20 @@ Four JSON contracts pass between stages, defined as pydantic models in
 All four validate against their pydantic models — see
 `src/jobapply/schemas.py`.
 
+## JD-Fetch Agent (PLAN.md Phase 1)
+
+**Gotcha found via live testing**: `fetch_job_context` originally waited
+`domcontentloaded` + a fixed 2-second sleep before reading `page.inner_text
+("body")`. Confirmed live against a real Workday posting (Qualcomm) that
+this is unreliable — the page body was still completely empty (0 chars) at
+2 seconds, a client-rendered SPA that only finished populating around 6
+seconds in. Worked fine on Greenhouse/Rippling by luck (faster-rendering
+pages), silently produced empty `company`/`title`/`jd_text` and a
+meaningless default `role_type` on Workday. Fixed by waiting for
+`networkidle` instead of a fixed sleep, plus a hard failure if the
+extracted text is still under 200 chars afterward (fail loudly instead of
+feeding the LLM near-nothing and getting garbage back).
+
 ## Resume Tailoring (PLAN.md Phase 2)
 
 **Format decision (resolves REQUIREMENT.md §19.1)**: `config/base_resume.html`
@@ -73,26 +87,36 @@ already hand-authored HTML), so no AGPL-provenance note is needed here the
 way there is for `prompt.py`.
 
 **Decide vs. edit, kept as two separate steps**: the LLM (Groq, via the
-Phase 3 `llm.complete()` interface) only ever decides *what* to change — it
-compares the resume against the JD, classifies every JD requirement into
-covered / reframe / missing, and returns (a) the single highest-impact
-"reframe" candidate as `{original_bullet, reframed_line}` and (b) the
-single highest-impact "missing" candidate as `{keyword, category}`, as
-small JSON. A separate, plain-code step then performs the actual HTML edit
-and renders to PDF. The LLM is deliberately never asked to output or
-rewrite the whole HTML file — that would risk it exceeding the
-one-bullet/one-keyword constraint REQUIREMENT.md sets, with no structural
-guarantee stopping it.
+Phase 3 `llm.complete()` interface) only ever decides *what* to change —
+it returns (a) one new bullet to add (or null) and (b) one missing skill
+keyword to add (or null), as small JSON. A separate, plain-code step then
+performs the actual HTML edit and renders to PDF. The LLM is deliberately
+never asked to output or rewrite the whole HTML file — that would risk it
+exceeding the one-bullet/one-keyword constraint REQUIREMENT.md sets, with
+no structural guarantee stopping it.
 
-**Reframe = rewrite an existing bullet in place, never append a new
-one** (revised from an earlier "add a new bullet" design). The LLM is
-given the target experience entry's actual existing bullets verbatim and
-must quote one back exactly in `original_bullet` so the code can find and
-replace it with `reframed_line` — the bullet count never changes. This is
-also more conservative than appending a fresh sentence: the underlying
-fact was already stated and true, only the wording changes to surface the
-JD-relevant angle. `ExperienceEdit` (`schemas.py`) reflects this:
-`{target, original_bullet, reframed_line}`, not the earlier `added_line`.
+**New bullet is appended, not a rewrite of an existing one — this went
+through two design iterations, both live-tested**:
+1. First design: reframe an *existing* bullet in place (quote one back
+   verbatim, replace it with a reworded version) — motivated by wanting to
+   avoid unbounded resume growth. Bullet count never changed, which was
+   good, but live-tested against two real JDs (Emergent, Rippling) it
+   converged on rewording the *same* generic bullet both times, producing
+   near-identical output regardless of what was actually distinctive about
+   each JD.
+2. Reverted to appending one new bullet (closer to REQUIREMENT.md's
+   original wording), but pointed the LLM specifically at the JD's most
+   *distinctive* unmet requirement rather than any generic implied line —
+   given the candidate's real experience anywhere in the resume (not just
+   the target entry's own bullets), and explicitly told not to restate
+   something the target entry's existing bullets already cover well.
+   Re-tested against the same two real JDs: Emergent (a reliability-framed
+   role) got a bullet about 24/7 production support and SLA-driven
+   debugging; Rippling (an HR/IT/Finance compliance-heavy product) got a
+   bullet about IAM policies and audit-logging — genuinely different,
+   each grounded in real resume content. `ExperienceEdit` (`schemas.py`)
+   is `{target, added_line}` again, not `{target, original_bullet,
+   reframed_line}`.
 
 **Missing-keyword cap revised to exactly one** (REQUIREMENT.md Resolved
 Product Decisions #8), down from the original "up to two" (§19.5) — only
@@ -136,8 +160,29 @@ role types, and visually confirmed the rendered PDF looks correct.
   and silently drop it if it does. Don't rely on LLM self-restraint alone
   for a fact that's mechanically checkable.
 
+**Fourth issue found (real Qualcomm/Workday JD, genuinely ambiguous "AI /
+ML Engineer" title)**: the new bullet drew on a skill ("Fine Tuning") that
+was real, but then invented specifics with zero basis anywhere in the
+resume -- "quantization techniques" and "sub-second inference latency on
+CPU-only nodes" (confirmed: neither term, nor "CPU" or "latency", appears
+anywhere in the resume text). A more clear-cut fabrication than the
+earlier borderline calls (an unevidenced "React" addition, a speculative
+"24/7 production support" claim). Also separately confirmed a
+chronology bug on the same JD: on a run where it targeted Fanatics SWE2
+(Aug 2021-Dec 2023), the new bullet attributed LangGraph/EKS/Terraform --
+all only evidenced in the *later* Harmony role (Feb 2024-present) -- which
+is impossible; the candidate didn't have those tools yet at the Fanatics
+job. Fixed the chronology bug with an explicit prompt rule (only draw
+supporting evidence from roles at or before the target's own dates). The
+fabrication issue is not yet fixed -- prompt wording alone has now failed
+to hold three times (this, and the two duplicate-keyword misses above);
+options being weighed: a stricter "every specific technique/metric must
+be traceable to an exact resume phrase" rule, a second-pass LLM
+verification call against the resume text, or always surfacing the diff
+for human review before use (Phase 2 currently has no review step).
+
 Not yet run against the full 5-JD curated set (2 AI, 2 ML, 1 ambiguous)
-PLAN.md's Phase 2 test calls for — only one real JD per role tested so far.
+PLAN.md's Phase 2 test calls for — only a handful of real JDs tested so far.
 
 ## LLM Provider
 
