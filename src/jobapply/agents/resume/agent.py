@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 from jobapply.llm import LLM
 from jobapply.schemas import ExperienceEdit, JobContext, RoleType, TailoredResume
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 BASE_RESUME_PATH = REPO_ROOT / "config" / "base_resume.html"
 BASE_RESUME_VERSION = "v1"
 RUNS_DIR = REPO_ROOT / "runs"

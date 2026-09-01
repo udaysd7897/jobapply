@@ -66,7 +66,7 @@ the rendered PDF opens correctly with the edit visible in the right place.
 This phase never needs a browser for the decide step — only the render
 step touches Playwright, and even that never navigates anywhere.
 
-Built (`src/jobapply/agents/resume.py`) and live-tested against two real
+Built (`src/jobapply/agents/resume/agent.py`) and live-tested against two real
 fetched JDs (Emergent/Greenhouse, Rippling) for the AI Engineer path.
 After the reframe-in-place -> append-distinctive-bullet redesign, the two
 outputs are genuinely different: Emergent (reliability-framed role) got a

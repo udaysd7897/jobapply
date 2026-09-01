@@ -4,8 +4,8 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 
 from jobapply.agents.apply.agent import apply_job
-from jobapply.agents.jd_fetch import fetch_job_context
-from jobapply.agents.resume import tailor_resume
+from jobapply.agents.jd_fetch.agent import fetch_job_context
+from jobapply.agents.resume.agent import tailor_resume
 from jobapply.escalate import escalate_apply_result, escalate_pipeline_error
 from jobapply.schemas import ApplyResult, JobContext, TailoredResume
 

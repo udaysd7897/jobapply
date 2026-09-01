@@ -136,7 +136,7 @@ source — that's the file Phase 4c's apply agent actually uploads. The HTML
 is an intermediate artifact (exact storage location under `runs/<job_id>/`
 not yet decided).
 
-**Built and live-tested** (`src/jobapply/agents/resume.py`). Real
+**Built and live-tested** (`src/jobapply/agents/resume/agent.py`). Real
 `config/base_resume.html` in place with `id="harmony-bullets"`,
 `id="fanatics-swe2-bullets"`, and `id="skills-section"` anchors (the
 skills section has categorized sub-groups, e.g. "LLM Systems", "Retrieval,

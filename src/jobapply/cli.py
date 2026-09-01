@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from jobapply.agents.jd_fetch import fetch_job_context
+from jobapply.agents.jd_fetch.agent import fetch_job_context
 
 RUNS_DIR = Path(__file__).resolve().parent.parent.parent / "runs"
 
