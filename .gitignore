@@ -17,6 +17,7 @@ runs/
 
 # Personal data — real values, not the .example.json templates
 config/profile.json
+config/base_resume.html
 *.pdf
 .mcp-apply*.json
 

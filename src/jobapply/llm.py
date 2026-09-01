@@ -1,9 +1,12 @@
 import os
 
+from dotenv import load_dotenv
 from openai import OpenAI
 
+load_dotenv()
+
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-DEFAULT_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+DEFAULT_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 
 class LLM:

@@ -31,8 +31,12 @@ class JobContext(BaseModel):
 
 
 class ExperienceEdit(BaseModel):
-    target: str = Field(description="Which experience entry the added line goes under, e.g. 'harmony' or 'fanatics_swe2'")
-    added_line: str
+    """Reframes one existing bullet in place -- does not add a new one.
+    See TECH_REQUIREMENT.md: Resume Tailoring for why."""
+
+    target: str = Field(description="Which experience entry the reframed bullet belongs to, e.g. 'harmony' or 'fanatics_swe2'")
+    original_bullet: str = Field(description="The existing bullet's exact original text, before reframing")
+    reframed_line: str = Field(description="The rewritten bullet text that replaces original_bullet")
 
 
 class TailoredResume(BaseModel):

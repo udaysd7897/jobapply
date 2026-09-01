@@ -73,16 +73,26 @@ already hand-authored HTML), so no AGPL-provenance note is needed here the
 way there is for `prompt.py`.
 
 **Decide vs. edit, kept as two separate steps**: the LLM (Groq, via the
-Phase 3 `llm.complete()` interface) only ever decides *what* to add — it
+Phase 3 `llm.complete()` interface) only ever decides *what* to change — it
 compares the resume against the JD, classifies every JD requirement into
-covered / reframe / missing, and returns the single highest-impact reframe
-candidate (one bullet line) and the single highest-impact missing candidate
-(one keyword) as small JSON. A separate, plain-code step then performs the
-actual HTML edit (insert the bullet into the right target's list element,
-insert the keyword into the skills list element) and renders to PDF. The
-LLM is deliberately never asked to output or rewrite the whole HTML file —
-that would risk it exceeding the one-line/one-keyword constraint REQUIREMENT.md
-sets, with no structural guarantee stopping it.
+covered / reframe / missing, and returns (a) the single highest-impact
+"reframe" candidate as `{original_bullet, reframed_line}` and (b) the
+single highest-impact "missing" candidate as `{keyword, category}`, as
+small JSON. A separate, plain-code step then performs the actual HTML edit
+and renders to PDF. The LLM is deliberately never asked to output or
+rewrite the whole HTML file — that would risk it exceeding the
+one-bullet/one-keyword constraint REQUIREMENT.md sets, with no structural
+guarantee stopping it.
+
+**Reframe = rewrite an existing bullet in place, never append a new
+one** (revised from an earlier "add a new bullet" design). The LLM is
+given the target experience entry's actual existing bullets verbatim and
+must quote one back exactly in `original_bullet` so the code can find and
+replace it with `reframed_line` — the bullet count never changes. This is
+also more conservative than appending a fresh sentence: the underlying
+fact was already stated and true, only the wording changes to surface the
+JD-relevant angle. `ExperienceEdit` (`schemas.py`) reflects this:
+`{target, original_bullet, reframed_line}`, not the earlier `added_line`.
 
 **Missing-keyword cap revised to exactly one** (REQUIREMENT.md Resolved
 Product Decisions #8), down from the original "up to two" (§19.5) — only
@@ -93,10 +103,41 @@ source — that's the file Phase 4c's apply agent actually uploads. The HTML
 is an intermediate artifact (exact storage location under `runs/<job_id>/`
 not yet decided).
 
-**Not started, blocked on**: `config/base_resume.html` doesn't exist yet.
-Its exact element structure (specific ids/classes for the Harmony bullet
-list, the Fanatics SWE2 bullet list, and the skills list) isn't finalized —
-needed before the edit step can be written.
+**Built and live-tested** (`src/jobapply/agents/resume.py`). Real
+`config/base_resume.html` in place with `id="harmony-bullets"`,
+`id="fanatics-swe2-bullets"`, and `id="skills-section"` anchors (the
+skills section has categorized sub-groups, e.g. "LLM Systems", "Retrieval,
+Speech & ML" — not a flat list, so the missing-keyword decision also
+names a category). Verified end-to-end against a live Groq call for both
+role types, and visually confirmed the rendered PDF looks correct.
+
+**Two bugs found via live testing, both fixed**:
+- The skill-category match required the LLM's proposed category string to
+  exactly equal an existing `.skill-label`'s text. The LLM instead
+  paraphrased ("Speech & ML" for the real "Retrieval, Speech & ML"),
+  which silently fell through to "no match" and created a near-duplicate
+  category instead of appending to the real one. Fixed with substring
+  matching (`_resolve_category`) against the actual extracted category
+  list in either direction, rather than requiring an exact quote.
+- Even after that fix, the match still failed: `_extract_skill_categories`
+  HTML-*unescapes* labels for readability (`&amp;` -> `&`), but the
+  resolved category was then searched for directly in the still-escaped
+  raw HTML, so `&` never matched `&amp;`. Fixed by re-escaping the matched
+  category (`html.escape(matched_category)`) before building the search
+  regex.
+- The LLM proposed a "missing" keyword that was already a literal,
+  exact-match skill chip in the resume (`LangGraph`) despite an explicit
+  prompt instruction not to, and despite the exact text being present in
+  what it was given — a genuine model-reliability miss, not a
+  missing-context problem (confirmed: the text was there). Rewording the
+  prompt further wasn't trusted to fix this reliably, so a deterministic
+  check was added instead: before inserting, verify the proposed keyword
+  doesn't already appear (case-insensitive) anywhere in the resume text,
+  and silently drop it if it does. Don't rely on LLM self-restraint alone
+  for a fact that's mechanically checkable.
+
+Not yet run against the full 5-JD curated set (2 AI, 2 ML, 1 ambiguous)
+PLAN.md's Phase 2 test calls for — only one real JD per role tested so far.
 
 ## LLM Provider
 
@@ -130,6 +171,16 @@ same interface):
 DeepSeek if resume-writing quality is insufficient. Treat Claude as the
 eventual production upgrade, swapped in via the same interface with no
 changes to agent logic.
+
+**Gotchas hit setting this up for real**: `llm.py` didn't actually call
+`load_dotenv()`, so a `GROQ_API_KEY` in `.env` was silently never read —
+fixed by adding it there. Separately, Groq's hosted model catalog rotates:
+the originally-hardcoded default (`llama-3.3-70b-versatile`) no longer
+exists (`404 model_not_found`) by the time this was actually tested.
+Current default is `openai/gpt-oss-120b` (confirmed live against
+`client.models.list()` on 2026-09-01) — if a similar error shows up again,
+re-check the live model list rather than assuming the hardcoded default
+still exists.
 
 **Revision**: this `llm.complete()` interface applies to Phases 1-2 only
 (pure text generation: JD classification, resume tailoring). Phase 4c

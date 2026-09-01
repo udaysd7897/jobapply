@@ -1,10 +1,11 @@
 {
   "job_id": "acme-ai-ai-engineer",
-  "resume_file": "runs/acme-ai-ai-engineer/resume.docx",
+  "resume_file": "runs/acme-ai-ai-engineer/resume.pdf",
   "base_resume_version": "v1",
   "experience_edit": {
     "target": "harmony",
-    "added_line": "Built evaluation harnesses to benchmark prompt variants across an LLM-based agent pipeline, informing prompt selection."
+    "original_bullet": "Built a golden evaluation dataset with a medical coder/biller covering common and edge cases across all three stages, and used it as the bar each agent had to clear before production",
+    "reframed_line": "Built evaluation harnesses to benchmark prompt variants across an LLM-based agent pipeline, informing prompt selection before production rollout."
   },
-  "skills_added": ["LangGraph", "Vector Search"]
+  "skills_added": ["LangGraph"]
 }
