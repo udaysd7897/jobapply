@@ -67,6 +67,15 @@ meaningless default `role_type` on Workday. Fixed by waiting for
 extracted text is still under 200 chars afterward (fail loudly instead of
 feeding the LLM near-nothing and getting garbage back).
 
+**Follow-up caught by `/code-review`**: unbounded `networkidle` trades one
+failure mode for another — a page with persistent background network
+activity (chat widgets, analytics/ad beacons, polling) never goes idle,
+so it would hang for Playwright's default 30s and then hard-fail, likely
+a regression for real postings the old fixed-sleep would have handled
+fine. Fixed with `timeout=10000` on the `goto` call, catching the timeout
+and proceeding with whatever rendered so far rather than raising — the
+200-char check below it still catches genuinely-unrendered pages.
+
 ## Resume Tailoring (PLAN.md Phase 2)
 
 **Format decision (resolves REQUIREMENT.md §19.1)**: `config/base_resume.html`

@@ -1,6 +1,7 @@
 import json
 import re
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from jobapply.llm import LLM
@@ -49,14 +50,21 @@ def fetch_job_context(job_url: str, llm: LLM | None = None) -> JobContext:
         page = browser.new_page()
         # networkidle, not a fixed sleep: confirmed live that a Workday
         # posting's body is still completely empty at domcontentloaded+2s
-        # (client-rendered SPA) and only populates ~6s in. A fixed timeout
-        # is fragile across different sites' render speed.
-        page.goto(job_url, wait_until="networkidle")
-        page_text = page.inner_text("body")
+        # (client-rendered SPA) and only populates ~6s in. Bounded to 10s
+        # and caught rather than left to the 30s default: a page with
+        # persistent background chatter (chat widgets, analytics beacons)
+        # may never go fully idle, so on timeout we proceed with whatever
+        # rendered so far instead of hard-failing a page that's actually
+        # loaded fine.
+        try:
+            page.goto(job_url, wait_until="networkidle", timeout=10000)
+        except PlaywrightTimeoutError:
+            pass
+        page_text = page.inner_text("body").strip()
         browser.close()
 
-    if len(page_text.strip()) < 200:
-        raise ValueError(f"page text too short ({len(page_text.strip())} chars) after networkidle -- page likely didn't render: {job_url}")
+    if len(page_text) < 200:
+        raise ValueError(f"page text too short ({len(page_text)} chars) -- page likely didn't render: {job_url}")
 
     metadata = _extract_metadata(llm, page_text)
     company = metadata["company"]
@@ -68,6 +76,6 @@ def fetch_job_context(job_url: str, llm: LLM | None = None) -> JobContext:
         portal=_detect_portal(job_url),
         company=company,
         title=title,
-        jd_text=page_text.strip(),
+        jd_text=page_text,
         role_type=RoleType(metadata["role_type"]),
     )
