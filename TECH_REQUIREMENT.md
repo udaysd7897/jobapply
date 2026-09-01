@@ -240,7 +240,38 @@ still exists.
 (pure text generation: JD classification, resume tailoring). Phase 4c
 (autofill/apply) does not go through it — see below.
 
-## Autofill/Apply Agent (PLAN.md Phase 4c)
+## Human Escalation (PLAN.md Phase 6)
+
+**Decision**: macOS desktop notification (`osascript`, native — no new
+dependency) plus a persistent `runs/escalations.jsonl` log, which is the
+actual source of truth (each notification send is best-effort and wrapped
+in a bare `except` — if it fails for any reason, silently move on, since
+the log entry already happened). Chosen over WhatsApp/email for v1 because
+PLAN.md explicitly asked for the simplest dev-time channel first;
+WhatsApp/a remote channel is still open, deferred future work.
+
+**Not a graph node** — `src/jobapply/escalate.py` is a standalone module
+with plain functions (`escalate_pipeline_error`, `escalate_apply_result`,
+`send_summary`), called by whatever's orchestrating a job's pipeline once
+Phase 5 exists, rather than being wired into `graph.py` itself. This
+matches the Framework decision already on record above: escalation reads
+`state.error` / `ApplyResult.result_code`, no conditional graph edges
+needed, keeping the graph linear.
+
+**Trigger logic**: `ESCALATING_RESULT_CODES = {captcha, login_issue,
+failed}` (REQUIREMENT.md Resolved Product Decisions #4) — `applied` and
+`expired` never escalate. Tested directly: each of the three escalating
+codes produces exactly one log entry with full context (job_id, url,
+company, title, reason, detail); `applied`/`expired` produce zero.
+
+**Notification delivery confirmed** (2026-09-01): the `osascript` call
+exits 0 regardless of permission state, so this needed a human to actually
+see/hear it, not just a clean exit code — the old `com.apple.ncprefs.plist`
+permission database this could otherwise have been checked against no
+longer exists as of macOS 26.5.2. User confirmed seeing and hearing a live
+test notification (with sound). The JSONL log doesn't depend on this
+either way, so even if notification delivery were ever silently revoked
+later, escalations wouldn't be lost, just not surfaced immediately.
 
 **Decision**: drive the browser via the Claude Code CLI in headless/print
 mode (`claude -p ... --output-format stream-json`), spawned as a subprocess

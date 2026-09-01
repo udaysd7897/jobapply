@@ -122,8 +122,11 @@ so keep them in sync when a schema changes.
 ### Runtime artifacts (`runs/`, gitignored)
 Per job, under `runs/<job_id>/`: `upload/` (resume copy for the browser to
 attach), `mcp-config.json`, `session_log.jsonl` (full apply-agent
-transcript), `filled_fields.json` (extracted audit). `runs/_browser_profile/`
-is the shared (not per-job) persistent Playwright profile.
+transcript), `filled_fields.json` (extracted audit), `resume.html` /
+`resume.pdf` (Phase 2 tailoring output). `runs/_browser_profile/` is the
+shared (not per-job) persistent Playwright profile. `runs/escalations.jsonl`
+is a single flat log (not per-job) of every human escalation and run
+summary — see `src/jobapply/escalate.py`.
 
 ### Personal data
 `config/profile.json` is the real demographic/compensation JSON the apply

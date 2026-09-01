@@ -161,14 +161,29 @@ disk (e.g. `runs/<job_id>/state.json`), stateless across jobs.
 `state.json` accumulates correctly at each stage and nothing carries over
 into a second job's run.
 
-## Phase 6 — Human escalation
+## Phase 6 — Human escalation ✅ Complete
 Wire the escalation channel — pick the simplest thing that works for dev
-(even a local notification/log) before committing to WhatsApp.
+(even a local notification/log) before committing to WhatsApp. Chosen:
+macOS desktop notification (`osascript`, no new dependency) + a persistent
+`runs/escalations.jsonl` log as the actual source of truth (notification
+delivery is best-effort and silently ignored if it fails). Built as a
+standalone module (`src/jobapply/escalate.py`), not a graph node, per
+TECH_REQUIREMENT.md's Framework note — reads `ApplyResult.result_code` /
+a pipeline error string, no conditional graph edges needed. WhatsApp or
+another remote channel is still open, deferred future work.
 
 **Test**: force a hard pipeline error and force each escalating `ApplyResult`
 outcome (`captcha`, `login_issue`, `failed`) separately, confirm each
 produces an escalation message with enough context (link,
 error, current state) to act on.
+
+**Delivered**: `escalate_pipeline_error()` and `escalate_apply_result()`
+tested for all three escalating codes plus a pipeline error (each produces
+a log entry with job_id/url/company/title/reason/detail); confirmed
+`applied`/`expired` produce zero log entries. `send_summary()` also built
+for Resolved Product Decisions #6 (one final summary after the full run,
+same channel) — tested with a hand-built `RunSummary`, not yet with a real
+end-to-end run since Phase 5 (chaining) doesn't exist yet.
 
 ## Phase 7 — Full run + summary
 Turn dry-run off (or leave it on until confident) and run the whole test
