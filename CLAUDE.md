@@ -23,7 +23,8 @@ the source of truth, not a historical record:
 
 ```
 uv sync                                    # install/sync dependencies
-uv run jobapply-fetch-jd <job_url>         # Phase 1: fetch a JD, write job_context.json to runs/<job_id>/
+uv run jobapply-fetch-jd <job_url>         # Phase 1 only: fetch a JD, write job_context.json to runs/<job_id>/
+uv run jobapply-run <job_url> [job_url...] # full pipeline (Phases 1-4c-6-7): fetch, tailor, apply, escalate, summarize
 uv run playwright install chromium         # one-time browser binary install (needed after a fresh uv sync)
 ```
 
@@ -61,11 +62,21 @@ Code session; running it directly in the user's own terminal avoids that.
 
 ### Pipeline orchestration
 `src/jobapply/graph.py` is a LangGraph `StateGraph` over `PipelineState`
-(pydantic). One node per pipeline stage, linear edges, no cycles — chosen
-deliberately over a plain function chain (see TECH_REQUIREMENT.md
-"Framework" for why). Only `fetch_jd` is wired in so far; resume
-customization (Phase 2) and the apply agent (Phase 4c) exist as standalone
-modules but are not yet added as graph nodes.
+(pydantic): `fetch_jd -> tailor_resume -> apply -> escalate`, one linear
+chain, no cycles, no conditional edges — chosen deliberately over a plain
+function chain (see TECH_REQUIREMENT.md "Framework" for why). A node that
+sees `state.error` already set no-ops (`return {}`) rather than the graph
+branching around it, so a failure anywhere upstream just flows through to
+`escalate_node` without every downstream node needing special-casing.
+`_persist()` writes the accumulated state to `runs/<job_id>/state.json`
+after each stage. `src/jobapply/runner.py`'s `run_all()` (Phase 7) invokes
+this graph once per job URL and sends one final `RunSummary` through
+`escalate.send_summary()`.
+
+**`cli.py`'s `jobapply-fetch-jd` deliberately does NOT go through this
+graph** — it calls `fetch_job_context()` directly, since it's a
+Phase-1-only debug command; going through `build_graph()` would silently
+also run `tailor_resume`/`apply`/`escalate`.
 
 ### Data contracts
 `src/jobapply/schemas.py` defines the pydantic models that cross stage

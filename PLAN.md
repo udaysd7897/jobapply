@@ -153,13 +153,29 @@ graph node, manually verify the result and any filled fields, confirm it
 stops before submit every time. Not started — `apply_job` is not yet added
 as a graph node (see `graph.py`, only `fetch_jd` is wired up).
 
-## Phase 5 — Chain the agents
-Wire JD-fetch -> resume-customize -> autofill with per-job state written to
-disk (e.g. `runs/<job_id>/state.json`), stateless across jobs.
+## Phase 5 — Chain the agents ✅ Mostly complete
+Wire JD-fetch -> resume-customize -> autofill -> escalate as one linear
+`StateGraph` (`src/jobapply/graph.py`), with per-job state written to disk
+at `runs/<job_id>/state.json` after each stage, stateless across jobs
+(each job gets a fresh `PipelineState`). `cli.py`'s `jobapply-fetch-jd`
+was switched to call `fetch_job_context()` directly instead of going
+through the graph -- it's a Phase 1-only debug command, and going through
+the full graph would have silently also run tailor_resume/apply/escalate.
 
 **Test**: run one real job link end-to-end in dry-run mode; confirm
 `state.json` accumulates correctly at each stage and nothing carries over
 into a second job's run.
+
+**Delivered and verified** (fetch_jd -> tailor_resume portion, directly by
+this session; the `apply` stage needs to be run by the user per the
+established auto-mode-classifier pattern -- see `temp/run_full_pipeline.py`):
+fetch_jd -> tailor_resume tested against two real JDs with state.json
+correctly accumulating `job_context`/`tailored_resume` after each stage;
+a second job run confirmed no state carried over from the first; a forced
+fetch_jd failure confirmed `error` short-circuits `tailor_resume_node`
+(returns `{}`, no exception) and `escalate_node` correctly logs a
+`pipeline_error` escalation with full context. Not yet verified: the
+`apply` node wired into this same graph, end-to-end, for real.
 
 ## Phase 6 — Human escalation ✅ Complete
 Wire the escalation channel — pick the simplest thing that works for dev
@@ -187,11 +203,21 @@ end-to-end run since Phase 5 (chaining) doesn't exist yet.
 
 ## Phase 7 — Full run + summary
 Turn dry-run off (or leave it on until confident) and run the whole test
-list end-to-end.
+list end-to-end. Built as `src/jobapply/runner.py`'s `run_all(job_urls,
+dry_run)` — invokes the Phase 5 graph once per URL, maps each final state
+to a `JobResult` status (`applied` / `skipped` for expired / `escalated`
+for captcha·login_issue·failed·other apply failures / `errored` for a
+pipeline error before reaching apply), and calls `escalate.send_summary()`
+once at the end. Exposed as `jobapply-run <url> [url ...]`.
+
+Still no Excel-sheet input (REQUIREMENT.md's original ask) -- `run_all`
+takes a plain list of URLs; reading them from a spreadsheet is a thin,
+separable layer on top of this, not yet built.
 
 **Test**: run 5 curated links, confirm each lands in applied/escalated/
 errored, and one final summary is produced with correct counts, sent through
-the escalation channel.
+the escalation channel. Not yet run for real -- depends on the `apply` node
+being exercised end-to-end first (see Phase 5).
 
 ## Phase 8 — CAPTCHA, deferred and reconsidered
 Solving CAPTCHAs to get past anti-bot protection is the part most likely to

@@ -1,20 +1,22 @@
 import sys
 from pathlib import Path
 
-from jobapply.graph import build_graph
+from jobapply.agents.jd_fetch import fetch_job_context
 
 RUNS_DIR = Path(__file__).resolve().parent.parent.parent / "runs"
 
 
 def fetch_jd(job_url: str) -> Path | None:
-    graph = build_graph()
-    result = graph.invoke({"job_url": job_url})
-
-    if result.get("error"):
-        print(f"error: {result['error']}", file=sys.stderr)
+    # Deliberately calls fetch_job_context() directly, not the graph --
+    # this command is Phase 1 only. Going through build_graph() would also
+    # run tailor_resume/apply/escalate, turning a "just fetch a JD" test
+    # into a live apply attempt.
+    try:
+        context = fetch_job_context(job_url)
+    except Exception as exc:
+        print(f"error: fetch_jd failed: {exc}", file=sys.stderr)
         return None
 
-    context = result["job_context"]
     out_dir = RUNS_DIR / context.job_id
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "job_context.json"
